@@ -30,23 +30,42 @@ async def fetch_leetcode_data():
     }
     """
     
-    async with httpx.AsyncClient() as client:
+    # 1. Fake browser headers to bypass Cloudflare's bot protection
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://leetcode.com/",
+        "Content-Type": "application/json"
+    }
+    
+    async with httpx.AsyncClient(headers=headers) as client:
         try:
+            # 2. Ask for the last 20 submissions instead of 1
             response = await client.post(
                 url,
-                json={"query": query, "variables": {"username": USERNAME, "limit": 1}}
+                json={"query": query, "variables": {"username": USERNAME, "limit": 20}}
             )
+            
+            # 3. Better error logging for the Render dashboard
+            if response.status_code != 200:
+                print(f"LeetCode blocked the request! Status: {response.status_code}")
+                return
+                
             data = response.json()
             submissions = data.get("data", {}).get("recentSubmissionList", [])
             
+            # Find the most recent one that was actually Accepted
             accepted = [sub for sub in submissions if sub["statusDisplay"] == "Accepted"]
             if accepted:
                 cache["latest_submission"] = accepted[0]
                 cache["last_updated"] = datetime.now().isoformat()
-                print(f"Cache updated with: {accepted[0]['title']}")
+                print(f"Cache updated successfully with: {accepted[0]['title']}")
+            else:
+                print(f"No accepted submissions found in the last 20 tries for {USERNAME}.")
+                
         except Exception as e:
             print(f"Failed to fetch LeetCode data: {e}")
 
+            
 # Background Scheduler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
